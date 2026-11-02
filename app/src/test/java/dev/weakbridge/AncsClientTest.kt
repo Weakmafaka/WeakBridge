@@ -32,11 +32,17 @@ class AncsClientTest {
     private fun event(type: Int, flags: Int = 0) =
         byteArrayOf(type.toByte(), flags.toByte(), 6, 1, 42, 0, 0, 0)
 
-    private fun response(title: String = "title"): ByteArray =
+    private fun response(title: String = "title", appId: String = ""): ByteArray =
         byteArrayOf(0, 42, 0, 0, 0) +
             Ancs.attributes
                 .flatMap { id ->
-                    val bytes = (if (id == 1) title else "").toByteArray()
+                    val bytes =
+                        (when (id) {
+                                0 -> appId
+                                1 -> title
+                                else -> ""
+                            })
+                            .toByteArray()
                     (byteArrayOf(id.toByte(), bytes.size.toByte(), 0) + bytes).toList()
                 }
                 .toByteArray()
@@ -140,5 +146,85 @@ class AncsClientTest {
         runCurrent()
         assertEquals(1, fatal)
         c.close()
+    }
+
+    @Test
+    fun obsoleteResponseSkipsOptionalAppNameTransaction() = runTest {
+        val transport = Transport()
+        var published = false
+        val client =
+            AncsClient(
+                backgroundScope,
+                transport,
+                { true },
+                { _, _, _ -> published = true },
+                {},
+                { error("fatal") },
+            )
+        client.start()
+        client.source(event(0))
+        runCurrent()
+        client.source(event(2))
+        client.data(response(appId = "org.example.app"))
+        runCurrent()
+        assertEquals(1, transport.writes.size)
+        assertFalse(published)
+        client.close()
+    }
+
+    @Test
+    fun blockedKnownAppSkipsSubsequentContentAndNameReads() = runTest {
+        val transport = Transport()
+        val seen = mutableListOf<String>()
+        var allowed = false
+        val client =
+            AncsClient(
+                backgroundScope,
+                transport,
+                { true },
+                { _, _, _ -> error("Blocked publication") },
+                {},
+                { error("fatal") },
+                appAllowed = { allowed },
+                observeApp = { id, _ -> seen += id },
+            )
+        client.start()
+        client.source(event(0))
+        runCurrent()
+        client.data(response(appId = "org.example.app"))
+        runCurrent()
+        assertEquals(listOf("org.example.app"), seen)
+        assertEquals(1, transport.writes.size)
+        repeat(20) { client.source(event(1)) }
+        runCurrent()
+        assertEquals(1, transport.writes.size)
+        allowed = true
+        client.source(event(1))
+        runCurrent()
+        assertEquals(2, transport.writes.size)
+        client.close()
+    }
+
+    @Test
+    fun categoryDisabledDuringFetchSkipsOptionalNameRead() = runTest {
+        val transport = Transport()
+        var categoryAllowed = true
+        val client =
+            AncsClient(
+                backgroundScope,
+                transport,
+                { categoryAllowed },
+                { _, _, _ -> error("Filtered publication") },
+                {},
+                { error("fatal") },
+            )
+        client.start()
+        client.source(event(0))
+        runCurrent()
+        categoryAllowed = false
+        client.data(response(appId = "org.example.app"))
+        runCurrent()
+        assertEquals(1, transport.writes.size)
+        client.close()
     }
 }

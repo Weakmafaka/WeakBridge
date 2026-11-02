@@ -12,11 +12,14 @@ class AncsClient(
     private val publish: (AncsEvent, Map<Int, String>, String?) -> Unit,
     private val remove: (Long) -> Unit,
     private val fatal: () -> Unit,
+    private val appAllowed: (String) -> Boolean = { true },
+    private val observeApp: (String, String?) -> Unit = { _, _ -> },
 ) {
     private val repository = AncsNotificationRepository()
     private val pending = linkedMapOf<Long, AncsNotificationRepository.Entry>()
     private val signal = Channel<Unit>(Channel.CONFLATED)
     private val appNames = linkedMapOf<String, String>()
+    private val knownApps = linkedMapOf<Long, String>()
     private var assembler: AncsAssembler? = null
     private var response: CompletableDeferred<Map<Int, String>>? = null
     private var worker: Job? = null
@@ -40,7 +43,16 @@ class AncsClient(
                                 } catch (ex: GattFailure) {
                                     if (ex.status == 0xA2) continue else throw ex
                                 }
+                            // Do not spend another GATT transaction on an obsolete response.
+                            if (repository.current(e.uid) != entry || !allowed(e.category)) continue
                             val appId = attrs[0].orEmpty()
+                            knownApps[e.uid] = appId
+                            if (knownApps.size > 100) knownApps.remove(knownApps.keys.first())
+                            if (appId.isNotBlank()) observeApp(appId, appNames[appId])
+                            if (!appAllowed(appId)) {
+                                remove(e.uid)
+                                continue
+                            }
                             // Longer identifiers need a larger MTU or reliable writes; skip
                             // optional name lookup at default MTU.
                             if (
@@ -59,8 +71,14 @@ class AncsClient(
                                 if (appNames.size >= 64) appNames.remove(appNames.keys.first())
                                 appNames[appId] = name
                             }
-                            if (repository.current(e.uid) == entry && allowed(e.category))
+                            if (
+                                repository.current(e.uid) == entry &&
+                                    allowed(e.category) &&
+                                    appAllowed(appId)
+                            ) {
+                                if (appId.isNotBlank()) observeApp(appId, appNames[appId])
                                 publish(e, attrs, appNames[appId])
+                            }
                         }
                     }
                 } catch (e: CancellationException) {
@@ -101,11 +119,13 @@ class AncsClient(
         val e = AncsParser.event(bytes) ?: return
         if (e.type == 2) {
             repository.accept(e)
+            knownApps.remove(e.uid)
             pending.remove(e.uid)
             remove(e.uid)
             return
         }
-        if (!allowed(e.category)) {
+        if (!allowed(e.category) || knownApps[e.uid]?.let { !appAllowed(it) } == true) {
+            repository.invalidate(e.uid)
             pending.remove(e.uid)
             remove(e.uid)
             return
@@ -129,8 +149,12 @@ class AncsClient(
 
     suspend fun action(uid: Long, positive: Boolean) {
         val e = repository.current(uid)?.event ?: return
-        if (e.supports(positive))
-            transport.write(Ancs.SERVICE, Ancs.CONTROL, Ancs.action(uid, positive))
+        if (e.supports(positive) && allowed(e.category) && appAllowed(knownApps[uid].orEmpty()))
+            transport.writeIfCurrent(Ancs.SERVICE, Ancs.CONTROL, Ancs.action(uid, positive)) {
+                repository.current(uid)?.event == e &&
+                    allowed(e.category) &&
+                    appAllowed(knownApps[uid].orEmpty())
+            }
     }
 
     fun close() {
@@ -140,5 +164,6 @@ class AncsClient(
         pending.clear()
         repository.clear()
         appNames.clear()
+        knownApps.clear()
     }
 }

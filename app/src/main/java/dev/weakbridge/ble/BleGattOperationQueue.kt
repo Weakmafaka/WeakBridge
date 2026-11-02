@@ -13,8 +13,12 @@ class BleGattOperationQueue(private val timeoutMs: Long = 12_000, private val on
     private var closed = false
 
     suspend fun run(key: String, start: () -> Boolean): ByteArray =
+        checkNotNull(runIfCurrent(key, { true }, start))
+
+    suspend fun runIfCurrent(key: String, valid: () -> Boolean, start: () -> Boolean): ByteArray? =
         mutex.withLock {
             check(!closed) { "GATT queue closed" }
+            if (!valid()) return@withLock null
             val reply = CompletableDeferred<ByteArray>()
             pending = key to reply
             try {

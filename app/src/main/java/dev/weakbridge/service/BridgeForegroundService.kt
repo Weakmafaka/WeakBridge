@@ -40,16 +40,25 @@ class BridgeForegroundService : Service() {
     private val machine = ConnectionStateMachine()
     private var attempts = 0
     private var passive = false
+    private var foregroundStarted = false
     private var receiverRegistered = false
+    private var activeAddress: String? = null
+    private var appliedMedia = true
+    private var appliedLowPower = true
+    private var appliedAutoReconnect = true
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        appliedMedia = app.settings.media
+        appliedLowPower = app.settings.lowPower
+        appliedAutoReconnect = app.settings.autoReconnect
         diagnostics = BridgeDiagnostics(app.settings)
+        diagnostics.event("service_created")
         devices = BleDeviceRepository(this, scope, diagnostics)
-        notifications = NotificationBridge(this)
-        media = MediaSessionBridge(this) { ams?.command(it) }
+        notifications = NotificationBridge(this, diagnostics::event)
+        media = MediaSessionBridge(this, { ams?.command(it) }, diagnostics::event)
         connection =
             BleConnectionManager(
                 this,
@@ -73,6 +82,7 @@ class BridgeForegroundService : Service() {
     }
 
     private fun foreground() {
+        if (foregroundStarted) return
         val open =
             PendingIntent.getActivity(
                 this,
@@ -85,12 +95,13 @@ class BridgeForegroundService : Service() {
             NotificationCompat.Builder(this, "bridge")
                 .setSmallIcon(R.drawable.ic_bridge)
                 .setContentTitle("WeakBridge")
-                .setContentText("iPhone Bluetooth bridge")
+                .setContentText(getString(R.string.core_foreground))
                 .setContentIntent(open)
                 .setOngoing(true)
                 .setSilent(true)
                 .build(),
         )
+        foregroundStarted = true
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -98,18 +109,18 @@ class BridgeForegroundService : Service() {
             checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) !=
                 PackageManager.PERMISSION_GRANTED
         ) {
-            status(ConnectionState.ERROR, "Nearby devices permission required")
+            status(ConnectionState.ERROR, getString(R.string.core_permission))
             stopSelf()
             return START_NOT_STICKY
         }
         try {
             foreground()
         } catch (e: RuntimeException) {
-            status(ConnectionState.ERROR, "Open the app to start the bridge")
+            status(ConnectionState.ERROR, getString(R.string.core_open_app))
             stopSelf()
             return START_NOT_STICKY
         }
-        diagnostics.event("service_starts")
+        diagnostics.event("service_commands")
         try {
             when (intent?.action) {
                 DISCONNECT,
@@ -117,19 +128,19 @@ class BridgeForegroundService : Service() {
                     app.settings.enabled = false
                     if (intent.action == FORGET) app.settings.address = null
                     stopAll()
-                    status(ConnectionState.DISCONNECTED, "Disconnected")
+                    status(ConnectionState.DISCONNECTED, getString(R.string.core_disconnected))
                     stopSelf()
                     return START_NOT_STICKY
                 }
                 SCAN -> {
                     app.settings.enabled = false
                     stopAll()
-                    status(ConnectionState.SCANNING, "Scanning for ANCS, 20 seconds")
+                    status(ConnectionState.SCANNING, getString(R.string.core_scanning))
                     devices.scan(
                         onEnd = {
                             status(
                                 ConnectionState.DISCONNECTED,
-                                "Поиск ANCS завершён. Если iPhone не найден, используйте «Подключить iPhone».",
+                                getString(R.string.core_scan_ended),
                             )
                         },
                         onError = { status(ConnectionState.ERROR, it) },
@@ -138,46 +149,57 @@ class BridgeForegroundService : Service() {
                 PAIR -> {
                     app.settings.enabled = false
                     stopAll()
-                    status(ConnectionState.BONDING, "Запускается BLE-реклама для сопряжения…")
+                    status(ConnectionState.BONDING, getString(R.string.core_pair_start))
                     devices.advertise(
                         onStatus = { status(ConnectionState.BONDING, it) },
                         onEnd = {
-                            status(
-                                ConnectionState.DISCONNECTED,
-                                "Окно сопряжения закрыто. Если сопряжение прошло, выберите iPhone в списке сохранённых устройств.",
-                            )
+                            status(ConnectionState.DISCONNECTED, getString(R.string.core_pair_end))
                         },
                         onError = { status(ConnectionState.ERROR, it) },
                     )
                 }
-                BONDS -> devices.bonds()
-                CONNECT -> {
-                    val address = intent.getStringExtra("address") ?: app.settings.address
-                    if (address != null) select(address)
-                    else
-                        status(
-                            ConnectionState.ERROR,
-                            "Сначала подключите iPhone и выберите его в списке сохранённых устройств",
-                        )
+                BONDS -> {
+                    devices.bonds()
+                    if (
+                        !app.settings.enabled &&
+                            app.status.value.state !in
+                                setOf(ConnectionState.BONDING, ConnectionState.SCANNING)
+                    ) {
+                        stopSelf()
+                        return START_NOT_STICKY
+                    }
                 }
-                CONFIG -> if (app.settings.enabled) reconnect()
+                CONNECT -> {
+                    val selectedAddress = intent.getStringExtra("address")
+                    val address = selectedAddress ?: app.settings.address
+                    if (address != null) select(address, force = selectedAddress == null)
+                    else status(ConnectionState.ERROR, getString(R.string.core_select_first))
+                }
+                CONFIG -> {
+                    if (
+                        !app.settings.enabled &&
+                            app.status.value.state !in
+                                setOf(ConnectionState.BONDING, ConnectionState.SCANNING)
+                    ) {
+                        stopSelf()
+                        return START_NOT_STICKY
+                    }
+                    applyConfiguration()
+                }
                 else ->
                     if (app.settings.enabled && app.settings.autoReconnect) reconnect()
                     else {
-                        status(ConnectionState.DISCONNECTED, "Tap Connect to start")
+                        status(ConnectionState.DISCONNECTED, getString(R.string.core_connect_first))
                         stopSelf()
                         return START_NOT_STICKY
                     }
             }
         } catch (e: SecurityException) {
             stopAll()
-            status(ConnectionState.ERROR, "Nearby devices permission required")
+            status(ConnectionState.ERROR, getString(R.string.core_permission))
         } catch (e: Exception) {
             stopAll()
-            status(
-                ConnectionState.ERROR,
-                "Bluetooth operation unavailable; enable Bluetooth and retry",
-            )
+            status(ConnectionState.ERROR, getString(R.string.core_bluetooth_retry))
         }
         return if (app.settings.enabled && app.settings.autoReconnect) START_STICKY
         else START_NOT_STICKY
@@ -190,11 +212,27 @@ class BridgeForegroundService : Service() {
         m: Boolean = false,
     ) {
         machine.transition(state)
+        diagnostics.event("state_${state.name.lowercase()}")
         app.status.value = BridgeStatus(state, detail, n, m)
     }
 
-    private fun select(address: String) {
+    private fun select(address: String, force: Boolean = false) {
+        if (
+            !force &&
+                activeAddress == address &&
+                app.status.value.state in
+                    setOf(
+                        ConnectionState.CONNECTING,
+                        ConnectionState.BONDING,
+                        ConnectionState.DISCOVERING_SERVICES,
+                        ConnectionState.AUTHORIZING,
+                        ConnectionState.SUBSCRIBING,
+                        ConnectionState.CONNECTED,
+                    )
+        )
+            return
         stopAll()
+        activeAddress = address
         attempts = 0
         passive = false
         selection =
@@ -203,7 +241,7 @@ class BridgeForegroundService : Service() {
                     check(devices.adapter?.isEnabled == true)
                     val device = devices.device(address) ?: error("Device missing")
                     if (device.bondState != BluetoothDevice.BOND_BONDED) {
-                        status(ConnectionState.BONDING, "Confirm pairing on both devices")
+                        status(ConnectionState.BONDING, getString(R.string.core_confirm_pair))
                         bondingAddress = address
                         val pending = CompletableDeferred<Unit>()
                         bond = pending
@@ -217,13 +255,10 @@ class BridgeForegroundService : Service() {
                     connection.connect(device, false)
                 } catch (e: CancellationException) {
                     if (e is TimeoutCancellationException)
-                        status(
-                            ConnectionState.ERROR,
-                            "Pairing timed out; retry from iPhone Bluetooth settings",
-                        )
+                        status(ConnectionState.ERROR, getString(R.string.core_pair_timeout))
                     else throw e
                 } catch (e: Exception) {
-                    status(ConnectionState.ERROR, "Pairing failed; check permissions and Bluetooth")
+                    status(ConnectionState.ERROR, getString(R.string.core_pair_failed))
                 } finally {
                     bond = null
                     bondingAddress = null
@@ -231,17 +266,53 @@ class BridgeForegroundService : Service() {
             }
     }
 
-    private fun reconnect() {
+    private fun reconnect(force: Boolean = false) {
         val selected = devices.selected()
         if (selected == null) {
-            status(ConnectionState.ERROR, "Saved bond unavailable; select your iPhone again")
+            status(ConnectionState.ERROR, getString(R.string.core_bond_unavailable))
             return
         }
-        select(selected.address)
+        select(selected.address, force)
+    }
+
+    /** Local preferences and controller hints do not invalidate a healthy BLE session. */
+    fun applyConfiguration() {
+        diagnostics.configurationChanged()
+        notifications.refreshSettings()
+        val mediaChanged = appliedMedia != app.settings.media
+        val priorityChanged = appliedLowPower != app.settings.lowPower
+        val reconnectChanged = appliedAutoReconnect != app.settings.autoReconnect
+        appliedMedia = app.settings.media
+        appliedLowPower = app.settings.lowPower
+        appliedAutoReconnect = app.settings.autoReconnect
+        if (mediaChanged && app.settings.enabled) {
+            // Change subscriptions as one fresh setup; never cancel an in-flight GATT read
+            // and continue on the same potentially ambiguous response stream.
+            reconnect(force = true)
+            return
+        }
+        if (priorityChanged && app.status.value.state == ConnectionState.CONNECTED)
+            connection.idle(app.settings.lowPower)
+        if (reconnectChanged && !app.settings.autoReconnect) {
+            retry?.cancel()
+            retry = null
+            if (app.status.value.state == ConnectionState.RECONNECTING) {
+                connection.close()
+                closeProtocols()
+                activeAddress = null
+                status(ConnectionState.DISCONNECTED, getString(R.string.core_auto_off))
+            }
+        } else if (
+            reconnectChanged &&
+                app.settings.enabled &&
+                app.status.value.state in setOf(ConnectionState.DISCONNECTED, ConnectionState.ERROR)
+        ) {
+            reconnect()
+        }
     }
 
     private suspend fun initialize(transport: GattTransport) {
-        status(ConnectionState.DISCOVERING_SERVICES, "Discovering iPhone services")
+        status(ConnectionState.DISCOVERING_SERVICES, getString(R.string.core_discovering))
         connection.discover()
         if (transport.has(BleConnectionManager.GATT, BleConnectionManager.CHANGED))
             transport.subscribe(
@@ -249,24 +320,34 @@ class BridgeForegroundService : Service() {
                 BleConnectionManager.CHANGED,
                 indication = true,
             )
-        status(ConnectionState.AUTHORIZING, "Allow Share System Notifications on iPhone")
+        status(ConnectionState.AUTHORIZING, getString(R.string.core_sharing))
         val hasAncs =
             listOf(Ancs.SOURCE, Ancs.CONTROL, Ancs.DATA).all { transport.has(Ancs.SERVICE, it) }
         val hasAms =
             app.settings.media &&
                 listOf(Ams.COMMAND, Ams.UPDATE).all { transport.has(Ams.SERVICE, it) }
-        status(ConnectionState.SUBSCRIBING, "Enabling event subscriptions")
+        status(ConnectionState.SUBSCRIBING, getString(R.string.core_subscribing))
         if (hasAncs) {
             ancs =
                 AncsClient(
-                    scope,
-                    transport,
-                    app.settings::category,
-                    notifications::publish,
-                    notifications::remove,
-                ) {
-                    lost(-5)
-                }
+                    scope = scope,
+                    transport = transport,
+                    allowed = app.settings::category,
+                    publish = notifications::publish,
+                    remove = notifications::remove,
+                    fatal = { lost(-5) },
+                    appAllowed = app.settings::appAllowed,
+                    observeApp = { id, name ->
+                        val entry =
+                            NotificationApp(id, NotificationAppCatalog.displayName(id, name))
+                        val existing = app.observedApps.value
+                        if (existing.firstOrNull { it.id == id } != entry)
+                            app.observedApps.value =
+                                (existing.filterNot { it.id == id } + entry)
+                                    .takeLast(128)
+                                    .sortedBy { it.name.lowercase() }
+                    },
+                )
             ancs!!.start()
         }
         if (hasAms) {
@@ -277,8 +358,8 @@ class BridgeForegroundService : Service() {
         connection.idle(app.settings.lowPower)
         status(
             ConnectionState.CONNECTED,
-            if (hasAncs || hasAms) "Connected"
-            else "Apple services absent; waiting for Service Changed",
+            if (hasAncs || hasAms) getString(R.string.core_connected)
+            else getString(R.string.core_services_missing),
             hasAncs,
             hasAms,
         )
@@ -335,35 +416,32 @@ class BridgeForegroundService : Service() {
         retry = null
         diagnostics.event("connection_drops")
         if (!app.settings.enabled) {
-            status(ConnectionState.DISCONNECTED, "Disconnected")
+            status(ConnectionState.DISCONNECTED, getString(R.string.core_disconnected))
             return
         }
         if (
             code in setOf(1005, 1008, 1015)
         ) { // Authentication, encryption, authorization: user intervention, no retry storm.
-            status(
-                ConnectionState.ERROR,
-                "iPhone authorization failed ($code); check pairing and Share System Notifications",
-            )
+            status(ConnectionState.ERROR, getString(R.string.core_authorization, code))
             return
         }
         if (!app.settings.autoReconnect) {
-            status(ConnectionState.DISCONNECTED, "Connection lost ($code); tap Reconnect")
+            status(ConnectionState.DISCONNECTED, getString(R.string.core_connection_lost, code))
             return
         }
         if (runCatching { devices.adapter?.isEnabled }.getOrNull() != true) {
-            status(ConnectionState.DISCONNECTED, "Waiting for Bluetooth")
+            status(ConnectionState.DISCONNECTED, getString(R.string.core_waiting_bluetooth))
             return
         }
         if (passive) {
-            status(ConnectionState.ERROR, "Passive restore failed ($code); tap Reconnect")
+            status(ConnectionState.ERROR, getString(R.string.core_passive_failed, code))
             return
         }
         val delayMs = BleReconnectPolicy().delayMs(attempts++)
         status(
             ConnectionState.RECONNECTING,
-            if (delayMs == null) "Waiting for iPhone (passive BLE)"
-            else "Connection lost ($code); retry in ${delayMs / 1000}s",
+            if (delayMs == null) getString(R.string.core_waiting_iphone)
+            else getString(R.string.core_retry_delay, code, delayMs / 1000),
         )
         retry =
             scope.launch {
@@ -372,10 +450,7 @@ class BridgeForegroundService : Service() {
                     val selected =
                         devices.selected()
                             ?: run {
-                                status(
-                                    ConnectionState.ERROR,
-                                    "Bond unavailable; select iPhone again",
-                                )
+                                status(ConnectionState.ERROR, getString(R.string.core_bond_missing))
                                 return@launch
                             }
                     diagnostics.event("reconnect_attempts")
@@ -384,7 +459,7 @@ class BridgeForegroundService : Service() {
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    status(ConnectionState.ERROR, "Reconnect unavailable; open app and retry")
+                    status(ConnectionState.ERROR, getString(R.string.core_reconnect_failed))
                 }
             }
     }
@@ -399,7 +474,10 @@ class BridgeForegroundService : Service() {
                                 BluetoothAdapter.STATE_OFF,
                                 BluetoothAdapter.STATE_TURNING_OFF -> {
                                     stopAll()
-                                    status(ConnectionState.DISCONNECTED, "Waiting for Bluetooth")
+                                    status(
+                                        ConnectionState.DISCONNECTED,
+                                        getString(R.string.core_waiting_bluetooth),
+                                    )
                                 }
                                 BluetoothAdapter.STATE_ON ->
                                     if (app.settings.enabled && app.settings.autoReconnect)
@@ -425,16 +503,13 @@ class BridgeForegroundService : Service() {
                                     device.bondState == BluetoothDevice.BOND_NONE
                             ) {
                                 stopAll()
-                                status(
-                                    ConnectionState.ERROR,
-                                    "iPhone bond removed; select device again",
-                                )
+                                status(ConnectionState.ERROR, getString(R.string.core_bond_removed))
                             }
                         }
                     }
                 } catch (e: SecurityException) {
                     stopAll()
-                    status(ConnectionState.ERROR, "Bluetooth permission revoked")
+                    status(ConnectionState.ERROR, getString(R.string.core_permission_revoked))
                 }
             }
         }
@@ -452,13 +527,26 @@ class BridgeForegroundService : Service() {
         }
     }
 
+    fun notificationDismiss(token: String?, uid: Long) {
+        if (notifications.accepts(token)) notifications.remove(uid)
+    }
+
+    fun notificationDismissGroup(token: String?, appId: String?) {
+        if (notifications.accepts(token) && appId != null) notifications.removeGroup(appId)
+    }
+
     fun mediaAction(token: String?, command: Int) {
         media.fromNotification(token, command)
     }
 
     fun diagnosticText() = diagnostics.snapshot(this)
 
+    fun clearDiagnostics() {
+        diagnostics.clear()
+    }
+
     private fun stopAll() {
+        activeAddress = null
         selection?.cancel()
         selection = null
         retry?.cancel()

@@ -99,7 +99,10 @@ class BleConnectionManager(
                     value: ByteArray,
                     status: Int,
                 ) {
-                    if (active(g)) q.complete(key("read", c.uuid), status, value)
+                    if (active(g)) {
+                        if (status == 0) diagnostics.bytes("rx_payload", value.size)
+                        q.complete(key("read", c.uuid), status, value)
+                    }
                 }
 
                 override fun onCharacteristicChanged(
@@ -109,6 +112,7 @@ class BleConnectionManager(
                 ) {
                     if (active(g)) {
                         diagnostics.event("callbacks")
+                        diagnostics.bytes("rx_payload", value.size)
                         onValue(c.uuid, value.copyOf())
                     }
                 }
@@ -169,10 +173,19 @@ class BleConnectionManager(
     ): ByteArray {
         val g = gatt ?: error("Disconnected")
         val q = queue ?: error("Disconnected")
-        return q.run(key(type, uuid)) {
-            check(g === gatt)
-            diagnostics.event("gatt_operations")
-            start(g)
+        var startedAt: BridgeDiagnostics.OperationStamp? = null
+        var success = false
+        try {
+            val result =
+                q.run(key(type, uuid)) {
+                    check(g === gatt)
+                    startedAt = diagnostics.operationStarted(type)
+                    start(g)
+                }
+            success = true
+            return result
+        } finally {
+            diagnostics.operationFinished(type, startedAt, success)
         }
     }
 
@@ -205,8 +218,42 @@ class BleConnectionManager(
     override suspend fun write(service: UUID, characteristic: UUID, value: ByteArray) {
         val c = characteristic(service, characteristic)
         op("write", characteristic) {
-            it.writeCharacteristic(c, value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) ==
-                BluetoothStatusCodes.SUCCESS
+            (it.writeCharacteristic(c, value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) ==
+                    BluetoothStatusCodes.SUCCESS)
+                .also { accepted -> if (accepted) diagnostics.bytes("tx_payload", value.size) }
+        }
+    }
+
+    override suspend fun writeIfCurrent(
+        service: UUID,
+        characteristic: UUID,
+        value: ByteArray,
+        valid: () -> Boolean,
+    ): Boolean {
+        val g = gatt ?: error("Disconnected")
+        val q = queue ?: error("Disconnected")
+        val c = characteristic(service, characteristic)
+        var startedAt: BridgeDiagnostics.OperationStamp? = null
+        var success = false
+        try {
+            val result =
+                q.runIfCurrent(key("write", characteristic), valid) {
+                    check(g === gatt)
+                    startedAt = diagnostics.operationStarted("write")
+                    (g.writeCharacteristic(
+                            c,
+                            value,
+                            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+                        ) == BluetoothStatusCodes.SUCCESS)
+                        .also { accepted ->
+                            if (accepted) diagnostics.bytes("tx_payload", value.size)
+                        }
+                }
+            success = result != null
+            if (result == null) diagnostics.event("gatt_stale_skipped")
+            return result != null
+        } finally {
+            diagnostics.operationFinished("write", startedAt, success)
         }
     }
 

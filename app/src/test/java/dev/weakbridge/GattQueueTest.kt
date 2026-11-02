@@ -75,4 +75,28 @@ class GattQueueTest {
         assertTrue(a.await().isFailure)
         assertTrue(b.await().isFailure)
     }
+
+    @Test
+    fun queuedValidityIsCheckedAfterEarlierOperationCompletes() = runTest {
+        val queue = BleGattOperationQueue { error("Unexpected fatal") }
+        var current = true
+        var obsoleteStarted = false
+        val first = async { queue.run("first") { true } }
+        val obsolete = async {
+            queue.runIfCurrent("obsolete", { current }) {
+                obsoleteStarted = true
+                true
+            }
+        }
+        val next = async { queue.run("next") { true } }
+        runCurrent()
+        current = false
+        queue.complete("first", 0)
+        runCurrent()
+        first.await()
+        assertNull(obsolete.await())
+        assertFalse(obsoleteStarted)
+        queue.complete("next", 0)
+        next.await()
+    }
 }

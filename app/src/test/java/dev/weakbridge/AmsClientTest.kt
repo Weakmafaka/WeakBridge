@@ -14,6 +14,7 @@ class AmsClientTest {
         val writes = mutableListOf<Pair<UUID, ByteArray>>()
         val subscriptions = mutableListOf<Boolean>()
         var readValue = "Full title".toByteArray()
+        var conditionalWriteGate: CompletableDeferred<Unit>? = null
 
         override suspend fun subscribe(
             service: UUID,
@@ -26,6 +27,18 @@ class AmsClientTest {
 
         override suspend fun write(service: UUID, characteristic: UUID, value: ByteArray) {
             writes += characteristic to value
+        }
+
+        override suspend fun writeIfCurrent(
+            service: UUID,
+            characteristic: UUID,
+            value: ByteArray,
+            valid: () -> Boolean,
+        ): Boolean {
+            conditionalWriteGate?.await()
+            if (!valid()) return false
+            write(service, characteristic, value)
+            return true
         }
 
         override suspend fun read(service: UUID, characteristic: UUID) = readValue
@@ -75,6 +88,66 @@ class AmsClientTest {
         runCurrent()
         assertEquals("New", c.state.value.title)
         assertTrue(t.writes.none { it.first == Ams.ATTRIBUTE })
+        c.close()
+    }
+
+    @Test
+    fun truncatedBurstKeepsNewestReadInsteadOfDroppingIt() = runTest {
+        val t = Transport()
+        val c = AmsClient(backgroundScope, t, { error("fatal") }, { testScheduler.currentTime })
+        c.start()
+        repeat(17) { c.update(byteArrayOf(2, 2, 1) + "Partial $it".toByteArray()) }
+        runCurrent()
+        assertEquals("Full title", c.state.value.title)
+        assertEquals(1, t.writes.count { it.first == Ams.ATTRIBUTE })
+        c.close()
+    }
+
+    @Test
+    fun truncatedBurstPreservesOtherPendingAttributes() = runTest {
+        val t = Transport()
+        val c = AmsClient(backgroundScope, t, { error("fatal") }, { testScheduler.currentTime })
+        c.start()
+        c.update(byteArrayOf(2, 0, 1) + "Artist".toByteArray())
+        repeat(100) { c.update(byteArrayOf(2, 2, 1) + "Partial $it".toByteArray()) }
+        runCurrent()
+        assertEquals("Full title", c.state.value.artist)
+        assertEquals("Full title", c.state.value.title)
+        assertEquals(2, t.writes.count { it.first == Ams.ATTRIBUTE })
+        c.close()
+    }
+
+    @Test
+    fun commandExpiresWhileWaitingForGattSubmission() = runTest {
+        val t = Transport()
+        val gate = CompletableDeferred<Unit>()
+        t.conditionalWriteGate = gate
+        val c = AmsClient(backgroundScope, t, { error("fatal") }, { testScheduler.currentTime })
+        c.start()
+        c.supported(byteArrayOf(Ams.NEXT.toByte()))
+        c.command(Ams.NEXT)
+        runCurrent()
+        advanceTimeBy(1501)
+        gate.complete(Unit)
+        runCurrent()
+        assertTrue(t.writes.none { it.first == Ams.COMMAND })
+        c.close()
+    }
+
+    @Test
+    fun commandLosingSupportWhileWaitingIsNotSubmitted() = runTest {
+        val t = Transport()
+        val gate = CompletableDeferred<Unit>()
+        t.conditionalWriteGate = gate
+        val c = AmsClient(backgroundScope, t, { error("fatal") }, { testScheduler.currentTime })
+        c.start()
+        c.supported(byteArrayOf(Ams.NEXT.toByte()))
+        c.command(Ams.NEXT)
+        runCurrent()
+        c.supported(byteArrayOf(Ams.PAUSE.toByte()))
+        gate.complete(Unit)
+        runCurrent()
+        assertTrue(t.writes.none { it.first == Ams.COMMAND })
         c.close()
     }
 

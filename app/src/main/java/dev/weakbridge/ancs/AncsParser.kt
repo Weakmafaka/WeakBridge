@@ -134,5 +134,9 @@ class AncsNotificationRepository(private val capacity: Int = 100) {
 
     fun current(uid: Long) = entries[uid]
 
+    fun invalidate(uid: Long) {
+        entries.remove(uid)
+    }
+
     fun clear() = entries.clear()
 }

@@ -6,7 +6,7 @@
 ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 ```
 
-The suite currently contains 35 JVM tests. It covers ANCS fragmentation and notification lifecycle, GATT serialization and cancellation, reconnect policy, pairing advertising layout, service status text, AMS metadata recovery and track transitions. Fake transports and coroutine virtual time make failures reproducible.
+The suite currently contains 54 JVM tests. It covers ANCS fragmentation and notification lifecycle, GATT serialization and cancellation, reconnect policy, pairing advertising layout, service status text, AMS metadata recovery and track transitions. Additional regressions cover a burst of truncated AMS updates, expiry/support changes while waiting for the GATT queue, removed/filtered ANCS responses, mirror eviction, grouping, quiet-hour boundaries and cooldown, plus diagnostics reset/toggle timing boundaries. Fake transports and coroutine virtual time make failures reproducible.
 
 Tests do not emulate Samsung's Bluetooth stack, notification rendering or gesture recognition. Reports are written to `app/build/reports/`.
 
@@ -29,3 +29,14 @@ Galaxy Watch6 (SM-R930) with iPhone 13 / iOS 26.0:
 - Compare battery consumption using [BATTERY_OPTIMIZATION.md](BATTERY_OPTIMIZATION.md).
 
 When reporting a result, include model, firmware, iOS version and the music app used. Never attach unredacted message content, Bluetooth addresses or full bugreports to a public issue.
+
+## 0.2.0 — 2026-11-02
+
+- Clean optimized wear build passed; **54 tests, 0 failures/errors**. Wear lint: **0 errors, 25 warnings** (dependency updates, UseKtx suggestions and launcher-shape heuristic).
+- Optimized 0.2.0 installed in place on SM-R930 using the existing private-build certificate. Bond/settings were retained; connection to the saved iPhone restored.
+- Connection, Home, Settings and Notifications exercised on the 432×432 round watch. Switching auto-reconnect and low-power settings updated their controls immediately and retained the same media session and playback timestamp. Quiet-hour toggle/hour selection, Help, and diagnostic clear/copy were also exercised; original settings restored.
+- Real incoming notification bursts, all action types, extended screen-off playback, reboot/out-of-range recovery and comparative battery drain remain acceptance work. JVM coverage is not a replacement for these checks.
+
+The `wear` build uses a development certificate; `release` uses the public distribution key. Device UI checks were performed on the earlier 0.2.0 wear build. Final manual-reconnect and diagnostic-boundary corrections received code review and regression checks; the final release APK was not separately installed during this run. Normal operation on the reference device was also confirmed in use.
+
+Release checks and APK digest: [Russian validation record](docs/VALIDATION_0.2.0_RU.md).

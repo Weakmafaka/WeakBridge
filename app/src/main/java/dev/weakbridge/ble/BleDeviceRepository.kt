@@ -6,6 +6,7 @@ import android.bluetooth.le.*
 import android.content.Context
 import android.os.ParcelUuid
 import dev.weakbridge.BridgeApplication
+import dev.weakbridge.R
 import dev.weakbridge.ancs.Ancs
 import dev.weakbridge.diagnostics.BridgeDiagnostics
 import kotlinx.coroutines.*
@@ -31,9 +32,11 @@ class BleDeviceRepository(
     private val found = linkedMapOf<String, String>()
 
     fun bonds() {
-        app.deviceListTitle.value = "Сохранённые Bluetooth-устройства (не поиск)"
+        app.deviceListTitle.value = context.getString(R.string.core_saved_devices)
         found.clear()
-        adapter?.bondedDevices?.forEach { found[it.address] = it.name ?: "Bonded device" }
+        adapter?.bondedDevices?.forEach {
+            found[it.address] = it.name ?: context.getString(R.string.core_saved_device)
+        }
         publish()
     }
 
@@ -55,9 +58,10 @@ class BleDeviceRepository(
         stopDiscovery()
         found.clear()
         publish()
-        app.deviceListTitle.value = "Устройства, обнаруженные по ANCS"
+        app.deviceListTitle.value = context.getString(R.string.core_found_devices)
         val epoch = discoveryEpoch
-        val scanner = adapter?.bluetoothLeScanner ?: error("Enable Bluetooth first")
+        val scanner =
+            adapter?.bluetoothLeScanner ?: error(context.getString(R.string.core_enable_bluetooth))
         // Callback identity is checked against the active scan to reject delayed results.
         val actual =
             object : ScanCallback() {
@@ -65,7 +69,8 @@ class BleDeviceRepository(
                     val owner = this
                     scope.launch {
                         if (scan !== owner) return@launch
-                        found[result.device.address] = result.device.name ?: "ANCS device"
+                        found[result.device.address] =
+                            result.device.name ?: context.getString(R.string.core_ancs_device)
                         publish()
                     }
                 }
@@ -74,7 +79,7 @@ class BleDeviceRepository(
                     scope.launch {
                         if (epoch == discoveryEpoch) {
                             stopDiscovery()
-                            onError("Ошибка BLE-поиска: $errorCode")
+                            onError(context.getString(R.string.core_scan_error, errorCode))
                         }
                     }
                 }
@@ -101,23 +106,21 @@ class BleDeviceRepository(
     fun advertise(onStatus: (String) -> Unit, onEnd: () -> Unit, onError: (String) -> Unit) {
         stopDiscovery()
         val epoch = discoveryEpoch
-        val bluetooth = adapter ?: error("Bluetooth отсутствует")
+        val bluetooth = adapter ?: error(context.getString(R.string.core_no_bluetooth))
         if (!bluetooth.isEnabled) {
-            onError("Включите Bluetooth на часах")
+            onError(context.getString(R.string.core_watch_bluetooth))
             return
         }
         val name = bluetooth.name.orEmpty()
         val layout = PairingAdvertising.layout(name)
         if (layout == PairingAdvertising.Layout.NAME_TOO_LONG) {
-            onError(
-                "Имя часов слишком длинное для BLE. Задайте в настройках часов имя до 26 байт UTF-8 и повторите."
-            )
+            onError(context.getString(R.string.core_long_name))
             return
         }
         val adv =
             bluetooth.bluetoothLeAdvertiser
                 ?: run {
-                    onError("BLE-реклама недоступна на часах")
+                    onError(context.getString(R.string.core_no_advertising))
                     return
                 }
         server =
@@ -132,23 +135,19 @@ class BleDeviceRepository(
                         scope.launch {
                             if (epoch != discoveryEpoch || advertising == null) return@launch
                             if (status != 0) {
-                                onStatus("Ошибка входящего BLE-соединения: $status")
+                                onStatus(context.getString(R.string.core_incoming_error, status))
                                 return@launch
                             }
                             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                                onStatus(
-                                    "Устройство подключилось. Подтвердите сопряжение на обоих устройствах."
-                                )
+                                onStatus(context.getString(R.string.core_incoming_pair))
                                 try {
                                     if (
                                         device.bondState == BluetoothDevice.BOND_NONE &&
                                             !device.createBond()
                                     )
-                                        onStatus(
-                                            "Не удалось начать сопряжение. Повторите подключение с iPhone."
-                                        )
+                                        onStatus(context.getString(R.string.core_pair_retry))
                                 } catch (_: SecurityException) {
-                                    onError("Нужно разрешение «Устройства поблизости»")
+                                    onError(context.getString(R.string.core_nearby))
                                 }
                             }
                         }
@@ -156,7 +155,7 @@ class BleDeviceRepository(
                 },
             )
                 ?: run {
-                    onError("Не удалось открыть BLE-сервер сопряжения")
+                    onError(context.getString(R.string.core_pair_server))
                     return
                 }
         val cb =
@@ -164,9 +163,7 @@ class BleDeviceRepository(
                 override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
                     scope.launch {
                         if (epoch == discoveryEpoch)
-                            onStatus(
-                                "BLE-реклама запущена: «$name». Откройте Настройки → Bluetooth на iPhone. Окно: 2 минуты."
-                            )
+                            onStatus(context.getString(R.string.core_advertising, name))
                     }
                 }
 

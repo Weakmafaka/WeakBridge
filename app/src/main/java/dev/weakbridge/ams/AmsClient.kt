@@ -16,7 +16,8 @@ class AmsClient(
     private val now: () -> Long = SystemClock::elapsedRealtime,
 ) {
     val state = MutableStateFlow(MediaState())
-    private val reads = Channel<Pair<EntityUpdate, Long>>(16)
+    private val reads = linkedMapOf<Pair<Int, Int>, Pair<EntityUpdate, Long>>()
+    private val readSignal = Channel<Unit>(Channel.CONFLATED)
     private val versions = mutableMapOf<Pair<Int, Int>, Long>()
     private val commands = Channel<Pair<Int, Long>>(8)
     private val jobs = mutableListOf<Job>()
@@ -29,25 +30,40 @@ class AmsClient(
         state.value = MediaState(available = true)
         jobs +=
             scope.launch {
-                for ((u, version) in reads) {
-                    try {
-                        val key = u.entity to u.attribute
-                        if (versions[key] != version || !transport.has(Ams.SERVICE, Ams.ATTRIBUTE))
-                            continue
-                        transport.write(
-                            Ams.SERVICE,
-                            Ams.ATTRIBUTE,
-                            byteArrayOf(u.entity.toByte(), u.attribute.toByte()),
-                        )
-                        val value = transport.read(Ams.SERVICE, Ams.ATTRIBUTE)
-                        if (versions[key] == version && value.size <= 4096)
-                            apply(u.copy(truncated = false, value = value.toString(Charsets.UTF_8)))
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: GattFailure) {
-                        if (e.status !in 0xA0..0xA2) fatal()
-                    } catch (e: Exception) {
-                        fatal()
+                for (ignored in readSignal) {
+                    while (reads.isNotEmpty()) {
+                        val (u, version) = reads.remove(reads.keys.first()) ?: continue
+                        try {
+                            val key = u.entity to u.attribute
+                            if (
+                                versions[key] != version ||
+                                    !transport.has(Ams.SERVICE, Ams.ATTRIBUTE)
+                            )
+                                continue
+                            val selected =
+                                transport.writeIfCurrent(
+                                    Ams.SERVICE,
+                                    Ams.ATTRIBUTE,
+                                    byteArrayOf(u.entity.toByte(), u.attribute.toByte()),
+                                ) {
+                                    versions[key] == version
+                                }
+                            if (!selected || versions[key] != version) continue
+                            val value = transport.read(Ams.SERVICE, Ams.ATTRIBUTE)
+                            if (versions[key] == version && value.size <= 4096)
+                                apply(
+                                    u.copy(
+                                        truncated = false,
+                                        value = value.toString(Charsets.UTF_8),
+                                    )
+                                )
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: GattFailure) {
+                            if (e.status !in 0xA0..0xA2) fatal()
+                        } catch (e: Exception) {
+                            fatal()
+                        }
                     }
                 }
             }
@@ -56,7 +72,15 @@ class AmsClient(
                 for ((command, at) in commands) {
                     if (now() - at > 1500 || command !in state.value.supported) continue
                     try {
-                        transport.write(Ams.SERVICE, Ams.COMMAND, byteArrayOf(command.toByte()))
+                        transport.writeIfCurrent(
+                            Ams.SERVICE,
+                            Ams.COMMAND,
+                            byteArrayOf(command.toByte()),
+                        ) {
+                            state.value.available &&
+                                now() - at <= 1500 &&
+                                command in state.value.supported
+                        }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: GattFailure) {
@@ -88,7 +112,15 @@ class AmsClient(
         val key = u.entity to u.attribute
         val version = (versions[key] ?: 0) + 1
         versions[key] = version
-        if (u.truncated) reads.trySend(u to version) else apply(u)
+        if (u.truncated) {
+            // There are only eleven valid entity/attribute keys. Keep their newest requests
+            // instead of letting stale revisions occupy a bounded FIFO and drop fresh data.
+            reads[key] = u to version
+            readSignal.trySend(Unit)
+        } else {
+            reads.remove(key)
+            apply(u)
+        }
     }
 
     private fun apply(u: EntityUpdate) {
@@ -142,7 +174,8 @@ class AmsClient(
     fun close() {
         jobs.forEach { it.cancel() }
         recovery?.cancel()
-        reads.close()
+        readSignal.close()
+        reads.clear()
         commands.close()
         state.value = MediaState()
     }

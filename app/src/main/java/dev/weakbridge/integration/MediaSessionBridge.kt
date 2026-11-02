@@ -16,7 +16,11 @@ import dev.weakbridge.ams.*
 import dev.weakbridge.service.BridgeForegroundService
 
 /** Remote session only. No local player, audio focus, audio track, or silent audio. */
-class MediaSessionBridge(private val context: Context, private val command: (Int) -> Unit) {
+class MediaSessionBridge(
+    private val context: Context,
+    private val command: (Int) -> Unit,
+    private val recordEvent: (String) -> Unit = {},
+) {
     private val manager = context.getSystemService(NotificationManager::class.java)
     private val session = MediaSessionCompat(context, "iPhone bridge")
     private var token = java.util.UUID.randomUUID().toString()
@@ -76,6 +80,7 @@ class MediaSessionBridge(private val context: Context, private val command: (Int
                     .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, s.album)
             s.durationMs?.let { metadata.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, it) }
             session.setMetadata(metadata.build())
+            recordEvent("media_metadata_updates")
         }
         val actions =
             mapOf(
@@ -86,7 +91,8 @@ class MediaSessionBridge(private val context: Context, private val command: (Int
                 Ams.PREVIOUS to PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS,
             )
         val p = s.playback
-        if (old == null || old.playback != p || old.supported != s.supported)
+        if (old == null || old.playback != p || old.supported != s.supported) {
+            recordEvent("media_state_updates")
             session.setPlaybackState(
                 PlaybackStateCompat.Builder()
                     .setActions(s.supported.fold(0L) { a, c -> a or (actions[c] ?: 0) })
@@ -105,6 +111,7 @@ class MediaSessionBridge(private val context: Context, private val command: (Int
                     )
                     .build()
             )
+        }
         s.volume?.let {
             if (volume.currentVolume != (it * 100).toInt())
                 volume.setCurrentVolume((it * 100).toInt())
@@ -162,6 +169,7 @@ class MediaSessionBridge(private val context: Context, private val command: (Int
                 }
             }
         manager.notify(2, notification.build())
+        recordEvent("media_notification_posts")
     }
 
     fun fromNotification(value: String?, id: Int) {

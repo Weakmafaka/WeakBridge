@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
 android {
     namespace = "dev.weakbridge"
     compileSdk = 35
@@ -10,11 +11,17 @@ android {
         applicationId = "dev.weakbridge"
         minSdk = 33
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.1.4"
+        versionCode = 6
+        versionName = "0.2.0"
     }
-    buildFeatures { compose = true; buildConfig = true }
-    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
     kotlinOptions { jvmTarget = "17" }
     val releaseKeystore = providers.environmentVariable("WEAKBRIDGE_KEYSTORE").orNull
     signingConfigs {
@@ -46,6 +53,7 @@ android {
     }
     testOptions { unitTests.isReturnDefaultValues = true }
 }
+
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-compose:1.10.1")
