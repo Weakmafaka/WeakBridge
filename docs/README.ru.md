@@ -5,7 +5,7 @@
   <p><a href="https://github.com/Weakmafaka/WeakBridge/releases/latest">Скачать APK</a> · <a href="../README.md">English</a> · <a href="https://github.com/Weakmafaka/WeakBridge/issues">Сообщить об ошибке</a></p>
 </div>
 
-WeakBridge связывает уже настроенные Wear OS-часы с iPhone по Bluetooth. Устанавливается одно приложение на часы; приложение на iPhone, аккаунт и облачный сервер не нужны. Звук остаётся на телефоне или выбранных на нём наушниках.
+WeakBridge — открытый Bluetooth-мост для подключения Samsung Galaxy Watch на Wear OS к iPhone: уведомления iOS и управление музыкой на часах. Устанавливается одно приложение на часы; приложение на iPhone, аккаунт и облачный сервер не нужны. Звук остаётся на телефоне или выбранных на нём наушниках.
 
 <p align="center">
   <img src="images/watch6-home-0.2.0.png" width="220" alt="Главный экран на Galaxy Watch6">
@@ -14,6 +14,8 @@ WeakBridge связывает уже настроенные Wear OS-часы с 
 </p>
 
 Скриншоты с Galaxy Watch6. Интерфейс доступен на русском и английском.
+
+[Сайт проекта и FAQ](https://weakmafaka.github.io/WeakBridge/ru/) · [English](https://weakmafaka.github.io/WeakBridge/)
 
 ## Возможности
 
@@ -49,7 +51,7 @@ adb install -r WeakBridge-0.2.0.apk
 
 **Переход с приватной тестовой сборки:** у неё другой ключ. При `INSTALL_FAILED_UPDATE_INCOMPATIBLE` переход на публичный APK потребует удаления приватного приложения со сбросом его настроек. Bluetooth-сопряжение можно оставить; после установки снова выберите iPhone.
 
-## Подключение
+## Как подключить Samsung Galaxy Watch к iPhone
 
 1. Откройте WeakBridge и разрешите доступ к устройствам поблизости и уведомлениям.
 2. Откройте **«Подключение» → «Подключить iPhone»** и подтвердите системный запрос видимости на две минуты.
@@ -74,6 +76,14 @@ adb install -r WeakBridge-0.2.0.apk
 - **Нет плеера:** начните воспроизведение на iPhone и проверьте «Управление музыкой». Работа системного плеера зависит от Samsung и музыкального приложения.
 
 При повторяющейся проблеме [создайте issue](https://github.com/Weakmafaka/WeakBridge/issues/new/choose). Укажите модели, ОС и шаги воспроизведения; удалите личные данные из приложений к отчёту.
+
+## Частые вопросы
+
+**Можно ли подключить Galaxy Watch6 к iPhone?** Да, WeakBridge проверен на Watch6 SM-R930 с iPhone 13 / iOS 26.0. Он добавляет уведомления и управление музыкой, но не заменяет полный набор Galaxy Wearable на iOS.
+
+**Нужно ли приложение на iPhone?** Нет. Один APK на часах использует встроенные сервисы Apple Notification Center Service (ANCS) и Apple Media Service (AMS) по Bluetooth.
+
+**Можно ли настроить сброшенные часы только с iPhone?** Нет. Часы должны быть уже настроены и работать на Android 13 / API 33 или новее. Другие Wear OS-модели пока требуют отдельной проверки.
 
 ## Данные и батарея
 

@@ -1,7 +1,7 @@
 <div align="center">
   <img src="app/src/main/res/drawable-nodpi/ic_launcher_art.png" width="128" alt="WeakBridge">
   <h1>WeakBridge</h1>
-  <p>iPhone notifications and music controls on your Galaxy Watch.</p>
+  <p>Connect Samsung Galaxy Watch to iPhone for notifications and music controls.</p>
   <p><a href="https://github.com/Weakmafaka/WeakBridge/releases/latest">Download APK</a> · <a href="docs/README.ru.md">Русский</a> · <a href="https://github.com/Weakmafaka/WeakBridge/issues">Report a bug</a></p>
   <p>
     <a href="https://github.com/Weakmafaka/WeakBridge/releases/latest"><img src="https://img.shields.io/github/v/release/Weakmafaka/WeakBridge" alt="Latest release"></a>
@@ -10,7 +10,7 @@
   </p>
 </div>
 
-WeakBridge connects an already configured Wear OS watch to an iPhone over Bluetooth. Install one app on the watch: no iPhone companion, account or cloud service is required. Music stays on the iPhone or its selected audio output.
+WeakBridge is an open-source **Wear OS iPhone Bluetooth bridge** that connects an already configured Samsung Galaxy Watch to an iPhone. Install one app on the watch: no iPhone companion, account or cloud service is required. Music stays on the iPhone or its selected audio output.
 
 <p align="center">
   <img src="docs/images/watch6-home-0.2.0.png" width="220" alt="Connection and service status on Galaxy Watch6">
@@ -19,6 +19,8 @@ WeakBridge connects an already configured Wear OS watch to an iPhone over Blueto
 </p>
 
 Screenshots from Galaxy Watch6. The interface is available in English and Russian.
+
+[Project website and FAQ](https://weakmafaka.github.io/WeakBridge/) · [Русская страница](https://weakmafaka.github.io/WeakBridge/ru/)
 
 ## Features
 
@@ -57,7 +59,7 @@ The pairing and connection ports differ. Turn Wireless debugging off after insta
 
 **Coming from a private development build:** its signing key differs from the public APK. If Android reports `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, changing to the public version requires uninstalling the private app, which removes app settings. The Bluetooth bond can remain; select your iPhone again after installation.
 
-## Connect
+## Connect Samsung Galaxy Watch to iPhone
 
 1. Open WeakBridge and allow Nearby devices and notifications.
 2. Open **Connection → Connect iPhone** and approve the system request to make the watch discoverable for two minutes.
@@ -67,6 +69,24 @@ The pairing and connection ports differ. Turn Wireless debugging off after insta
 6. Send a new notification and start music to check both services.
 
 The watch keeps its Bluetooth name. The optional compatible-device scan is a diagnostic tool; an empty result does not prove the iPhone is incompatible. [Russian setup and troubleshooting](docs/README.ru.md).
+
+## Galaxy Watch iOS notifications: common questions
+
+### Does Galaxy Watch6 work with iPhone through WeakBridge?
+
+WeakBridge has been tested with Samsung Galaxy Watch6 (SM-R930) and iPhone 13 on iOS 26.0. It adds notification mirroring and music controls to an already configured watch. It does not restore the full Galaxy Wearable feature set on iOS.
+
+### Do I need to install an iPhone app?
+
+No. One APK runs on the watch and uses the iPhone's built-in Apple Notification Center Service (ANCS) and Apple Media Service (AMS) over Bluetooth. There is no companion app, account or cloud relay.
+
+### Which notifications and music features are supported?
+
+The watch receives new notifications that iOS shares, including updates, removals and supported actions. Filters, grouping, quiet hours and hidden previews are configured on the watch. Music controls include play/pause, track changes and relative volume; audio stays on the iPhone or its chosen output. Arbitrary text replies, audio streaming and health sync are not supported.
+
+### Can I set up a factory-reset Galaxy Watch with only an iPhone?
+
+No. The watch must already be configured and run Android 13 / API 33 or later. Only Watch6 is confirmed in this project's device testing; other Wear OS models need separate verification.
 
 ## Privacy and battery
 
