@@ -10,7 +10,7 @@
   </p>
 </div>
 
-WeakBridge is an open-source **Wear OS iPhone Bluetooth bridge** that connects an already configured Samsung Galaxy Watch to an iPhone. Install one app on the watch: no iPhone companion, account or cloud service is required. Music stays on the iPhone or its selected audio output.
+WeakBridge is an open-source **Wear OS iPhone Bluetooth bridge** that connects an already configured Samsung Galaxy Watch to an iPhone. Install one app on the watch: no iPhone companion, account or cloud service is required. Music stays on the iPhone or its selected audio output. **ANCS notifications** and **AMS music controls** use the iPhone’s built-in Apple Bluetooth services.
 
 <p align="center">
   <img src="docs/images/watch6-home-0.2.0.png" width="220" alt="Connection and service status on Galaxy Watch6">
@@ -38,6 +38,12 @@ Version 0.2.0 adds the new interface and notification controls, avoids unnecessa
 ## Compatibility and limits
 
 **Beta, tested with Galaxy Watch6 (SM-R930) and iPhone 13 on iOS 26.0.** Pairing, music controls, the new interface and ordinary use have been confirmed on this combination. Other models, firmware and music apps need testing; long-term battery drain has not been measured.
+
+| Coverage | Device or requirement |
+|---|---|
+| Confirmed test combination | Samsung Galaxy Watch6 (SM-R930), iPhone 13, iOS 26.0 |
+| Watch minimum | Already configured Wear OS watch with Android 13 / API 33+ |
+| Other hardware and apps | Separate device/firmware/music-app testing required |
 
 Requires Android 13 / API 33 or later on an already configured watch. WeakBridge uses Apple's ANCS and AMS services. It does not set up a factory-reset watch, replace Galaxy Wearable, stream audio, sync health data or send arbitrary message replies. Notification actions depend on what iOS supplies. Gestures depend on watch firmware; double pinch in AOD and global fist-to-pause are not provided by this app.
 
@@ -92,7 +98,7 @@ No. The watch must already be configured and run Android 13 / API 33 or later. O
 
 Notification content and observed app names stay in memory and Android's notification system; there is no persistent message history. Only preferences, blocked app identifiers and the selected Bluetooth device are stored. There is no Internet permission, analytics or account system.
 
-The bridge is event-driven, with no continuous scan, periodic keepalive or permanent wake lock. Recovery attempts are bounded. Version 0.2.0 reduces redundant work, but no battery-life percentage is claimed. See [power design and measurement](BATTERY_OPTIMIZATION.md).
+The low-power BLE design is event-driven, with no continuous scan, periodic keepalive or permanent wake lock. Recovery attempts are bounded. Version 0.2.0 reduces redundant work, but no battery-life percentage is claimed. See [power design and measurement](BATTERY_OPTIMIZATION.md) for retry limits, LOW_POWER connection hints and reproducible battery-test scenarios. These design choices still need long-term battery measurements.
 
 ## Build
 
@@ -110,8 +116,8 @@ For a signed release, set `WEAKBRIDGE_KEYSTORE`, `WEAKBRIDGE_KEY_ALIAS`, `WEAKBR
 
 [Report a bug](https://github.com/Weakmafaka/WeakBridge/issues/new/choose) with your device models, OS versions and reproduction steps. Remove private messages and device addresses before attaching logs or screenshots.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [architecture](ARCHITECTURE.md), [testing](TESTING.md) and the [watch-only roadmap](docs/WATCH_ONLY_PLAN_RU.md). If the app is useful to you, a GitHub star helps other watch owners find it.
+See [CONTRIBUTING.md](CONTRIBUTING.md), [architecture](ARCHITECTURE.md) and [testing](TESTING.md). If the app is useful to you, a GitHub star helps other watch owners find it.
 
 ## License
 
-[MIT](LICENSE). Dependency licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Related interoperability work is linked in [References](docs/RESEARCH.md).
+[MIT](LICENSE). Dependency licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

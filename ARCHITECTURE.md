@@ -49,3 +49,9 @@ Selecting the same address during a live connection is idempotent; explicit Reco
 Notification settings filter by category and observed app identifier. Names use ANCS and a local name catalog; bundled glyphs describe categories, not vendor logos. Quiet hours and per-app cooldown suppress signals while preserving new content. Updates and preference refreshes are silent. Group summaries are limited to six apps with multiple records. A dismissed child/group is removed from the RAM store; settings refresh does not resurrect it. Notification permission restoration reconciles actual active cards before silent republishing.
 
 Observed app names and message contents are RAM-only; selected bond, preferences and blocked identifiers persist. Unblocking can restore a retained card or allow the next event, but does not fetch an iPhone notification archive. Diagnostics are opt-in, event-driven, bounded, and copied only by an explicit user action.
+
+## Protocol and platform references
+
+- [Apple Notification Center Service](https://developer.apple.com/library/archive/documentation/CoreBluetooth/Reference/AppleNotificationCenterServiceSpecification/Specification/Specification.html): notification events, attributes and supported actions.
+- [Apple Media Service](https://developer.apple.com/library/archive/documentation/CoreBluetooth/Reference/AppleMediaService_Reference/Specification/Specification.html): metadata and remote playback commands.
+- [Android foreground service types](https://developer.android.com/develop/background-work/services/fgs/service-types): connected-device communication and permission requirements.

@@ -35,16 +35,13 @@ adb bugreport weakbridge-bugreport.zip
 
 Bugreports/Bluetooth snoop logs may contain private data. Keep them local, inspect/redact before sharing. Use OS power profiling/Perfetto where supported for detailed wakeups; do not enable continuous production telemetry. Do not request Samsung battery exclusions preemptively. If a repeatable OEM termination is observed, record evidence and test a documented user-selected battery setting as a separate comparison. There are no measured battery results yet.
 
-## 0.2.0 decisions after comparing implementations
+## Work avoided in 0.2.0
 
-The source comparison is recorded in [the Russian audit](docs/COMPETITOR_ANALYSIS_RU.md), with pinned revisions and separate code/documentation evidence. Changes here are independent implementations within the existing serialized transport.
+| Behavior | Verification and limits |
+|---|---|
+| Ordinary settings apply without replacing the Bluetooth connection; explicit Reconnect still forces recovery | The same media session was retained during low-power/auto-reconnect changes on Watch6 |
+| Truncated AMS metadata keeps only the newest revision per attribute; command validity is rechecked after queue waiting | Regression tests cover bursts, expiry and withdrawn support |
+| Removed or filtered ANCS responses skip optional app-name queries; known blocked UIDs skip subsequent reads | Regression tests cover removal, filter changes and repeated blocked updates; an unknown app still needs its initial identifier read |
+| Unchanged Android notification projections are not republished | Publication counters are available for device checks; real alert delivery requires separate acceptance |
 
-| Reference or finding | Decision in WeakBridge | Evidence and limit |
-|---|---|---|
-| [WearBridge connection guard](https://github.com/k97/WearBridge/blob/c9ff912b9e87bb679c63c863c6f7df6e97d06e52/wearos-app/app/src/main/java/com/wearos/ancsbridge/ble/BleConnectionManager.kt) | Duplicate selection of the same live link is ignored; explicit reconnect still forces recovery. Ordinary settings apply locally. | Watch QA retained the same media session across low-power/auto-reconnect changes. No discharge percentage is inferred. |
-| Our truncated AMS read channel could discard the newest value in a burst | Keep only the newest revision per valid entity/attribute; recheck validity at actual GATT submission. | Regression tests cover 17 rapid updates, expiry and withdrawn support while queued. |
-| A removed/filtered notification could still trigger an optional app-name transaction | Recheck UID revision/category/app after content response, before name lookup. Skip subsequent reads for known blocked UIDs. | Three regressions cover removal, filter changes and 20 blocked updates without extra reads. An unknown app still needs its initial identifier read. |
-| Repeated identical Android publications | Cache projected content, republish settings silently, retain dismissed-card deletion, and count actual notify calls. | Store/policy tests; real Samsung alert delivery still needs acceptance. |
-| PixelWatch's 3-second metadata loop, Herold's periodic watchdog, ultra's unbounded advertising | Keep existing event-driven recovery, bounded discovery/advertising and backoff/passive autoConnect. | These mechanisms were already present; copying periodic checks is not an established improvement. Herold's Wi-Fi/wake locks run while charging, not continuously on battery. |
-
-No perpetual polling, wake lock, exact alarm, high-priority connection oscillation or automatic large-MTU request was introduced. LOW_POWER versus BALANCED and MTU remain measured experiments. Android also [discourages periodic BLE scans](https://developer.android.com/develop/connectivity/bluetooth/ble/background).
+LOW_POWER versus BALANCED and larger MTU remain measured experiments. No battery-life percentage has been established. Android [discourages periodic BLE scans](https://developer.android.com/develop/connectivity/bluetooth/ble/background).

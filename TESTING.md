@@ -39,4 +39,16 @@ When reporting a result, include model, firmware, iOS version and the music app 
 
 The `wear` build uses a development certificate; `release` uses the public distribution key. Device UI checks were performed on the earlier 0.2.0 wear build. Final manual-reconnect and diagnostic-boundary corrections received code review and regression checks; the final release APK was not separately installed during this run. Normal operation on the reference device was also confirmed in use.
 
-Release checks and APK digest: [Russian validation record](docs/VALIDATION_0.2.0_RU.md).
+## Public 0.2.0 artifact
+
+[WeakBridge-0.2.0.apk](https://github.com/Weakmafaka/WeakBridge/releases/download/v0.2.0/WeakBridge-0.2.0.apk) uses the same public release certificate as 0.1.4. Both optimized variants built with debuggable disabled. APK contents retain dependency licenses in `assets/licenses/`; local tools, signing keys and private logs are not packaged.
+
+SHA-256:
+
+```text
+9c45e912aa5598e7b0c29bc47028af8ae16ea57536e48ea778527ae6f634ee93  WeakBridge-0.2.0.apk
+```
+
+Release certificate SHA-256: `26381dcfe860b5592a507aec4dd24d791d38b8fcd1e80b32a6e0b3e94a470839`.
+
+Remaining device checks include high notification volume, app filters/groups and action types, quiet-hour/cooldown signals, permission restoration, prolonged screen-off playback, player changes, out-of-range recovery, Bluetooth off/on and reboot. Battery trials follow [BATTERY_OPTIMIZATION.md](BATTERY_OPTIMIZATION.md).

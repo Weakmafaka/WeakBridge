@@ -82,3 +82,12 @@ p { margin-top: 0; }
 @media (max-width: 360px) {
   .header { flex-wrap: wrap; }
 }
+
+.compatibility { margin: 0 0 24px; }
+.compatibility > div { display: grid; grid-template-columns: minmax(160px, 1fr) 3fr; gap: 24px; padding-block: 16px; border-top: 1px solid var(--line); }
+.compatibility dt { font-weight: 650; }
+.compatibility dd { margin: 0; color: var(--muted); }
+.footer nav { max-width: 600px; }
+@media (max-width: 640px) {
+  .compatibility > div { grid-template-columns: 1fr; gap: 6px; }
+}
